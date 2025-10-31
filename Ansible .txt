@@ -1,0 +1,29 @@
+Ansible - является одним из наиболее популярных инструментов для автоматизации инфраструктуры наряду с Chef, Puppet и SaltStack
+
+установка 	
+	$sudo apt update
+	$sudo apt install ansible
+	$ansible --version	
+
+настройка хостов
+	/etc/ansible/hosts - если нет файла -- $touch /etc/ansible/hosts
+		 #так мы объявляем группу 
+		[servers]
+		one.example.com
+		two.example.com
+		#наш хост	#тут оставляем как есть			#расположение SSH		
+		10.12.0.5  ansible_ssh_private_key_file=/home/ubuntu/.ssh/clientkey 
+
+аутентификация Ansible
+	
+	получаем SSH и чохраняем его /home/ubuntu/.ssh/<имя файла>
+	$sudo chown ubuntu:ubuntu /home/ubuntu/.ssh/<имя_файла> 
+	$chmod 600 /home/ubuntu/.ssh/<имя_файла>
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+playbook
+
+$sudo создадим директорию 
+$создадим create_files.yaml

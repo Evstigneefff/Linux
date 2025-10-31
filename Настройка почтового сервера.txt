@@ -1,0 +1,255 @@
+Postfix — это популярный почтовый сервер (MTA) для отправки, получения и маршрутизации электронной почты. Надёжный инструмент с модульной архитектурой
+-------
+
+1) Установка и настройка dnsmasq и почтового сервера (все по аналагии с предыдущим)
+
+	$ sudo apt update
+	$ sudo apt install -y dnsmasq net-tools postfix mailutils  (в одной команде мы можем устанавливать сразу несколько пакетов) dnsmasq net-tools postfix mailutils
+	///При установке Postfix запросит тип почты. Убедитесь, что выбрана опция Internet Site, и нажмите Enter.///
+	$ sudo systemctl disable --now systemd-resolved.service - выключаем сервис резолвера
+	$ sudo systemctl mask systemd-resolved.service  - накладываем маску
+	$ sudo nano /etc/dnsmasq.conf 
+			no-resolv
+			bind-interfaces
+			listen-address=_______ # Здесь замените IP-адрес на адрес вашего сервера
+			interface=eth0
+			server=77.88.8.1
+			server=77.88.8.8 
+			cache-size=1000
+			domain-needed   
+			domain=example.local 
+			address=/example.local/ # Здесь укажите IP-адрес запущенной виртуальной машины
+			mx-host=example.local,mail.example.local,10
+
+	     ///domain-needed — не закомментирована, dnsmasq будет игнорировать DNS-запросы, которые не содержат точку (.) или доменную часть.
+		domain=example.local — задаёт локальный домен по умолчанию для клиентов в сети. Если клиент запрашивает имя хоста без домена, например, ping server, dnsmasq автоматически добавит указанный домен example.local
+		address=/example.local/ #IP-адрес запущенной машины — создаёт DNS-запись для почтового сервера всего домена example.local. То есть любой запрос к имени вида *.example.local (например, mail.example.local, server.example.local) будет резолвиться в указанный IP.
+		address — статическая DNS-запись, сопоставляющая имя mail.example.local с IP-адресом сервера
+		mx-host — настраивает MX-запись для домена example.local, указывая почтовый сервер и его приоритет. Если отправитель направит письмо на user@example.local, сервер получателя запросит MX-запись для example.local  и отправит письмо на mail.example.local
+		mail.example.local — полное доменное имя (FQDN) почтового сервера. Оно должно резолвиться в IP-адрес, указанный после address=.
+		mx-host=example.local,mail.example.local,10 — 10 в конце означает приоритет. Чем меньше число, тем выше приоритет. ///
+
+	$ sudo systemctl restart dnsmasq.service
+
+
+	///протестрируем настройки, подключимся к клиенту///
+
+	$sudo nano /etc/resolv.conf
+
+		nameserver _________ # Замените на IP-адрес вашего DNS-сервера
+		search example.local
+
+	$ nslookup example.local
+		///ожидаем  Name: example.local, а в поле Address: IP-адрес запущенной машины///
+
+
+------------------------------------------------------------------------------------------------
+
+
+2) настройка почтового сервера Postfix	Важно!!! Internet Site - тип почты
+	
+	$sudo nano /etc/postfix/main.cf
+				smtpd_use_tls = no
+				smtpd_tls_security_level = none
+				myhostname = example.local 
+				mydomain = example.local  
+				myorigin = /etc/mailname 
+				inet_interfaces = all 
+				mydestination = $myhostname, example.local, localhost.$mydomain, 				localhost 
+				mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128 10.0.0.0/8				relayhost = 
+				home_mailbox = Maildir/ 
+
+ 				#smtpd_tls_cert_file=...
+ 				#smtpd_tls_key_file=...
+ 				#smtpd_tls_security_level=...
+ 				#smtp_tls_CApath=...
+ 				#smtp_tls_security_level=...
+ 				#smtp_tls_session_cache_database=...
+ 
+
+	///
+		
+		
+	- myhostname = example.local — это «имя» почтового сервера в сети.
+	- mydomain = example.local — это общее имя для всей локальной сети. Можно сказать, что это как «фамилия» для почты.
+	- myorigin = /etc/mailname говорит почтовому серверу, что если кто-то отправляет письмо без указания домена, нужно взять название домена из файла /etc/mailname. В данном случае — example.local.
+	- inet_interfaces = all определяет, на каких IP-адресах сервер будет принимать почту.
+	- mydestination = $myhostname, example.local, localhost.$mydomain, localhost указывает, что нужно принимать письма для перечисленных адресов.
+	- mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128 10.0.0.0/8 разрешает отправку писем только из указанной сети. В данном случае — вся локальная сеть 10.0.0.0/8.
+	- relayhost = определяет, каким путём пойдёт отправка писем. Если строка пустая, то отправка идёт напрямую, а не через другой сервер. В ином случае нужно указать промежуточный сервер.
+	- home_mailbox = Maildir/ показывает, в какую директорию MTA будет складывать письма.
+
+					///
+
+	$ sudo systemctl restart postfix - рестартанем
+	$ sudo systemctl status postfix
+	$ mkdir -p ~/Maildir/{new,cur,tmp} - создадим директорию
+	$ chmod -R 700 ~/Maildir - установим права
+	$ ls -la ~/Maildir/new
+	
+-----------------------------------------------------------------------------------------------------
+
+Отправка писем через терминал
+
+///используем клиент///
+
+	$ nslookup example.local - убедимся, что почтовый сервер резолвится
+
+			///ожидаем 	
+				Name: example.local
+				Address: IP-адрес запущенной виртуальной машины ///
+
+
+	$  sudo apt update && sudo apt install -y mailutils -- && позволяет запускать несколько команд 				последовательно, при условии успешного выполнения предыдущей команды
+	
+	$ sudo /etc/postfix/main.cf.
+			меняем .auto.internal на .example.local
+				.auto.internal —  не распознаётся развёрнутым DNS-сервером.
+				.example.local — зарегистрирован и настроен в DNS-сервере.
+			myhostname = epd896kf2gg1lo76lf03.example.local - имя хоста почтовой системы
+	$ sudo systemctl restart postfix
+
+
+Отправка письма без вложения
+
+	$  echo "test" | mail -s "Приглашение на конференцию" ubuntu@example.local
+		     ///echo  -В данном случае мы вставляем текст в тело письма.
+			mail — позволяет читать и отправлять электронные письма в интерактивном режиме 				из командной строки.
+			-s — тема письма.
+			ubuntu@example.local — получатель///
+	
+Отправка письма с указанием темы и вложением
+	
+	$  echo "testvlog" > /tmp/message.txt - создали вложение 
+	$  echo "test" | mail -s "Важное test" -A /tmp/message.txt ubuntu@example.local
+		///Вложение добавляется с помощью -A (от англ. attachment).///
+	$  ls -la ~/Maildir/new - проверим почту
+	$  cat ~/Maildir/new/ #  имя вашего электронного письма -посмотрим письмо
+	$  sudo apt install mpack - чтобы смотреть вложения
+	$  cd ~/Maildir/new/
+	$  munpack /письмо/
+	$  ls -la ~/Maildir/new - проверяем, появилось ли письмо
+	$  cat ~/Maildir/new/message.txt
+
+------------------------------------------------------------------------------------------
+
+Основные ошибки при отправке писем:
+
+Ошибки 5xx - Ошибки, начинающиеся с цифры 5, относятся к серверным сбоям — это означает, что проблема на стороне почтового сервера отправителя или получателя. Ошибки 5xx встречаются часто, особенно при массовых рассылках или проблемах с хостингом
+
+Причины:
+	почтовый ящик не существует;
+	сервер получателя отклоняет письмо, например, из-за антиспама или политик домена;
+	IP-адрес отправителя находится в чёрном списке Spamhaus или Barracuda.
+
+1) 550 Mailbox unavailable / Access denied (Почтовый ящик недоступен / Доступ запрещён)
+	причины:
+		почтовый ящик не существует;
+		сервер получателя отклоняет письмо, например, из-за антиспама или политик домена;
+		IP-адрес отправителя находится в чёрном списке Spamhaus или Barracuda.
+	Решение: 
+		проверить правильность email-адреса
+	log:2025-04-11T13:05:23.547054+00:00 fhmnpvt86kedp0g8uvi2 postfix/smtpd[6883]: NOQUEUE: reject: RCPT from unknown[10.11.0.71]: 550 5.1.1 <ubuntu2@example.local>: Recipient address rejected: User unknown in local recipient table; from=<ubuntu@epd896kf2gg1lo76lf03> to=<ubuntu2@example.local> proto=ESMTP helo=<epd896kf2gg1lo76lf03.example.local>
+2) 552 Mailbox full-  Почтовый ящик переполнен
+	причины:
+		почтовый ящик не существует;
+		сервер получателя отклоняет письмо, например, из-за антиспама или политик домена;
+		IP-адрес отправителя находится в чёрном списке Spamhaus или Barracuda.
+	решение: 
+		проверить правильность email-адреса.
+	log: 2025-04-11T13:05:23.547054+00:00 fhmnpvt86kedp0g8uvi2 postfix/smtpd[6883]: NOQUEUE: reject: RCPT from unknown[10.11.0.71]: 550 5.1.1 <ubuntu2@example.local>: Recipient address rejected: User unknown in local recipient table; from=<ubuntu@epd896kf2gg1lo76lf03> to=<ubuntu2@example.local> proto=ESMTP helo=<epd896kf2gg1lo76lf03.example.local>
+
+3) 553 Invalid sender/recipient (Недопустимый отправитель/получатель)
+	Причины:
+		неправильный формат email;
+		настроена блокировка отправителя: например, с помощью функции reject_unlisted_sender, 			которая отклоняет письма от адресов, не зарегистрированных в системе.
+	Решение: 
+		проверить корректность адресов и настройки smtpd_sender_restrictions.
+	log:2025-04-11T13:05:23.547054+00:00 fhmnpvt86kedp0g8uvi2 postfix/smtpd[6883]: NOQUEUE: reject: RCPT from unknown[10.11.0.71]: 553 5.1.8 <invalid@example.local>: Sender address rejected: Domain not found; from=<invalid@example.local> to=<recipient@domain.com> proto=ESMTP helo=<mail.example.local>
+
+4) 554 Transaction failed / Rejected by policy (Транзакция не удалась / Отклонено политикой)
+	
+	Причины:
+		Письмо заблокировано антиспамом, например с помощью SpamAssassin или RBL.
+		Не пройдена проверка одним из механизмов верификации отправителя (SPF/DKIM/DMARC).
+		Запрещено правилами header_checks или body_checks. Правила фильтруют заголовки и 			содержимое письма соответственно.
+	Решение:
+		Проверить логи с помощью grep "554" /var/log/mail.log.
+		Проверить DNS-записи отправителя с помощью dig TXT example.com.
+		log:2025-04-11T13:05:23.547054+00:00 fhmnpvt86kedp0g8uvi2 postfix/smtpd[6883]: NOQUEUE: reject: RCPT from unknown[10.11.0.71]: 554 5.7.1 <spammer@bad-domain.com>: Recipient address rejected: Message rejected due to policy restrictions; from=<spammer@bad-domain.com> to=<ubuntu@example.local> proto=ESMTP 
+
+5) Connection timed out (Время ожидания истекло)
+	Причина: сервер получателя не отвечает. Это могут быть проблемы с сетью или фаерволом.
+	Решение: проверить доступность с помощью telnet example.com 25 или проверить настройки 			фаервола.
+	log:2025-04-11T13:05:23.547054+00:00 fhmnpvt86kedp0g8uvi2 postfix/smtp[6883]: connect to 		example.local[10.10.1.99]:25: Connection timed out
+
+6) No route to host / Network unreachable (Нет маршрута к хосту / Сеть недоступна)
+	Причина: проблемы с сетью или DNS.
+	Решение: проверить маршрутизацию и DNS с помощью dig MX example.com.
+	log:2025-04-11T13:05:23.547054+00:00 fhmnpvt86kedp0g8uvi2 postfix/smtp[6883]: connect to 		mail.example.com[10.10.1.99]:25: No route to host
+
+
+-----------------------------------------------------------------------------------------------
+
+Рекомендации по анализу ошибки в Postfix
+
+1) $  cat /var/log/mail.log | grep "550" -- Посмотреть логи
+	Этот метод полезен в таких случаях: 
+		письма не доходят до адресата;
+		удалённый сервер считает письмо спамом из-за спам-фильтров;
+		случаются конфигурационные ошибки, например указана неправильная обратная зона DNS.
+
+2) $  dig MX example.local -- Проверить DNS и MX-записи
+	почта не отправляется или не принимается из-за того, что MX-записи отсутствуют или ведут на 		неверный сервер;
+	подозрение на подмену DNS, например если письма уходят на фишинговый сервер.
+
+3) $  postconf -n | grep "restrictions"  -- проверить блокировки
+
+	Проверка блокировок покажет, какие правила фильтрации входящих и исходящих писем применены в 	Postfix. А ещё списки IP-адресов, доменов или почтовых адресов, которые блокируются.
+	Провести проверку блокировок можно, когда:
+	письма отклоняются без очевидной причины, например, из-за строгих правил спам-фильтрации;
+	блокировки срабатывают не как положено, например если легитимные отправители попадают в чёрный 	список.
+4) $  telnet example.com 25  -- Так вы увидите, доступен ли порт 25/TCP или другой SMTP-порт
+
+	Это поможет выявить ситуации, когда сервер не принимает соединение, например, из-за блокировки 	порта фаерволом.
+	Также такое прямое подключение к почтовому серверу позволяет отправлять письма, 	последовательно набирая команды, предусмотренные SMTP-протоколом, — с ними вы познакомитесь 	совсем скоро. Это помогает понять, на каком этапе подготовки или отправки письма возникает 		ошибка.
+------------------------------------------------------------------------------------
+Анализ SMTP-трафика
+
+$ sudo wireshark - запуска Wireshark
+	smtp || tcp.port == 25
+		 эти фильтры:
+	Анализ почтового трафика. Можно отслеживать, какие письма отправляются и принимаются.
+	Поиск утечек данных. Например, если кто-то передаёт конфиденциальные данные через почту.
+	Отладка почтовых серверов. Если письма не доходят, можно проверить SMTP-коды ответов.
+	Исследование спама. Можно искать подозрительные письма в перехваченном трафике.
+
+Фильтры 
+
+Фильтр	Описание
+smtp	Показывает все SMTP-пакеты
+smtp.response.code == 550	Показывает письма с ошибкой User unknown
+smtp.req.parameter contains "example.local"	Ищет отправителя или получателя
+tcp.port == 25 && ip.src == 192.168.1.100	Показывает трафик SMTP от конкретного IP-адреса
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		

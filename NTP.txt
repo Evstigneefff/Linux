@@ -1,0 +1,29 @@
+NTP Network Time Protocol - cинхронизация точного времени
+	
+	UTC (Coordinated Universal Time) — универсальное координированное время (по атомным часам)
+	GMT (Greenwich Mean Time) — среднее время по Гринвичу (по солнечному времени)
+
+Установка NTP
+
+	$sudo apt update
+	$sudo apt install chrony
+	$sudo nano /etc/chrony/chrony.conf
+			#закомментируем pool
+			server 0.ru.pool.ntp.org iburst
+			server 1.ru.pool.ntp.org iburst 
+	$sudo timedatectl set-ntp true
+	$sudo systemctl restart chrony
+	$sudo systemctl status chrony
+	$timedatectl - узнать пояс
+	$sudo timedatectl set-timezone Europe/Moscow
+
+Установка времени на клиенту
+
+	$sudo apt update
+	$sudo apt install chrony
+	$sudo nano /etc/chrony/chrony.conf
+			#закомментируем pool
+			server <здесь укажите IP-адрес вашего NTP-сервера>
+	$sudo timedatectl set-ntp true - сохранить изменения и укажите операционной системе использовать синхронизацию NTP
+	$sudo systemctl restart chrony
+	$sudo systemctl status chrony
